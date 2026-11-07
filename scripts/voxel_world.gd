@@ -33,6 +33,7 @@ class MeshBuffers:
 	var verts := PackedVector3Array()
 	var norms := PackedVector3Array()
 	var uvs := PackedVector2Array()
+	var uv2s := PackedVector2Array()
 	var cols := PackedColorArray()
 	var inds := PackedInt32Array()
 
@@ -48,7 +49,7 @@ func _process(delta: float) -> void:
 
 func generate_async() -> void:
 	VoxelWorld.init_tables()
-	Blocks.get_material(not with_collision)
+	Blocks.init()
 	WorkerThreadPool.add_task(_thread_generate.bind(biome, world_seed))
 
 
@@ -80,7 +81,7 @@ func _apply_chunk(c: Vector3i, arrays: Array) -> void:
 		return
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	mesh.surface_set_material(0, Blocks.get_material(not with_collision))
+	mesh.surface_set_material(0, Blocks.get_material())
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
 	mi.name = "Chunk_%d_%d_%d" % [c.x, c.y, c.z]
@@ -292,13 +293,13 @@ static func build_chunk_arrays(data: PackedByteArray, c: Vector3i) -> Array:
 				if not (e0 or e1 or e2 or e3 or e4 or e5):
 					continue
 				var u := up_index(x, y, z)
-				var base := Vector3(x - HALF, y - HALF, z - HALF)
-				if e0: _emit_face(b, base, 0, id, u)
-				if e1: _emit_face(b, base, 1, id, u)
-				if e2: _emit_face(b, base, 2, id, u)
-				if e3: _emit_face(b, base, 3, id, u)
-				if e4: _emit_face(b, base, 4, id, u)
-				if e5: _emit_face(b, base, 5, id, u)
+				var p := Vector3i(x, y, z)
+				if e0: _emit_face(b, data, p, 0, id, u)
+				if e1: _emit_face(b, data, p, 1, id, u)
+				if e2: _emit_face(b, data, p, 2, id, u)
+				if e3: _emit_face(b, data, p, 3, id, u)
+				if e4: _emit_face(b, data, p, 4, id, u)
+				if e5: _emit_face(b, data, p, 5, id, u)
 	if b.verts.is_empty():
 		return []
 	var arrays := []
@@ -306,38 +307,59 @@ static func build_chunk_arrays(data: PackedByteArray, c: Vector3i) -> Array:
 	arrays[Mesh.ARRAY_VERTEX] = b.verts
 	arrays[Mesh.ARRAY_NORMAL] = b.norms
 	arrays[Mesh.ARRAY_TEX_UV] = b.uvs
+	arrays[Mesh.ARRAY_TEX_UV2] = b.uv2s
 	arrays[Mesh.ARRAY_COLOR] = b.cols
 	arrays[Mesh.ARRAY_INDEX] = b.inds
 	return arrays
 
 
-const _SHADE := [1.0, 0.82, 0.62]  # top, side, bottom
-const _UV_EPS := 0.002
+const _SHADE := [1.0, 0.84, 0.66]  # top, side, bottom
+const _AO := [0.5, 0.66, 0.82, 1.0]  # brightness by number of open neighbours (0..3)
 
 
-static func _emit_face(b: MeshBuffers, base: Vector3, f: int, id: int, u: int) -> void:
+static func _solid(data: PackedByteArray, p: Vector3i) -> bool:
+	if p.x < 0 or p.y < 0 or p.z < 0 or p.x >= SIZE or p.y >= SIZE or p.z >= SIZE:
+		return false
+	return data[p.x + p.y * SIZE + p.z * SIZE * SIZE] != 0
+
+
+static func _emit_face(b: MeshBuffers, data: PackedByteArray, p: Vector3i, f: int, id: int, u: int) -> void:
 	var kind: int = _face_kind[u][f]
-	var tile: int = Blocks.FACE_TILES[id][kind]
-	var origin := Blocks.tile_uv_origin(tile)
-	var size := Blocks.tile_uv_size()
 	var corners: Array = _face_corners[f]
 	var luv: PackedVector2Array = _face_uvs[u][f]
-	var n := Vector3(DIRS[f])
+	var ni: Vector3i = DIRS[f]
+	var n := Vector3(ni)
+	var axis := 0 if ni.x != 0 else (1 if ni.y != 0 else 2)
+	var t1 := (axis + 1) % 3
+	var t2 := (axis + 2) % 3
 	var shade: float = _SHADE[kind]
 	if kind == 1 and (f & 1) == 1:
-		shade *= 0.92
-	var col := Color(shade, shade, shade)
+		shade *= 0.94
+	var col := Blocks.face_color(id, kind, p.x, p.y, p.z)
+	var glow := Vector2(Blocks.GLOW[id], 0.0)
+	var base := Vector3(p) - Vector3(HALF, HALF, HALF)
+	var out := p + ni
+	var ao := PackedFloat32Array([1, 1, 1, 1])
 	var start := b.verts.size()
 	for k in 4:
-		b.verts.append(base + corners[k])
+		var c: Vector3 = corners[k]
+		# Ambient occlusion from the three blocks touching this corner, in front of the face.
+		var s1 := Vector3i()
+		var s2 := Vector3i()
+		s1[t1] = 1 if c[t1] > 0.5 else -1
+		s2[t2] = 1 if c[t2] > 0.5 else -1
+		var a1 := _solid(data, out + s1)
+		var a2 := _solid(data, out + s2)
+		var level := 0 if (a1 and a2) else 3 - int(a1) - int(a2) - int(_solid(data, out + s1 + s2))
+		ao[k] = _AO[level]
+		var v := shade * ao[k]
+		b.verts.append(base + c)
 		b.norms.append(n)
-		var l := luv[k]
-		var cl := Vector2(lerpf(_UV_EPS, 1.0 - _UV_EPS, l.x), lerpf(_UV_EPS, 1.0 - _UV_EPS, l.y))
-		b.uvs.append(origin + cl * size)
-		b.cols.append(col)
-	b.inds.append(start)
-	b.inds.append(start + 1)
-	b.inds.append(start + 2)
-	b.inds.append(start)
-	b.inds.append(start + 2)
-	b.inds.append(start + 3)
+		b.uvs.append(luv[k])
+		b.uv2s.append(glow)
+		b.cols.append(Color(col.r * v, col.g * v, col.b * v))
+	# Flip the quad's diagonal so AO interpolates without a visible crease.
+	if ao[0] + ao[2] >= ao[1] + ao[3]:
+		b.inds.append_array([start, start + 1, start + 2, start, start + 2, start + 3])
+	else:
+		b.inds.append_array([start + 1, start + 2, start + 3, start + 1, start + 3, start])

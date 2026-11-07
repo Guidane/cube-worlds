@@ -15,8 +15,8 @@ const MOUSE_SENSITIVITY := 0.0025
 const TURN_RATE := 8.0
 const REACH := 6.0
 const HOTBAR := [
-	Blocks.GRASS, Blocks.DIRT, Blocks.STONE, Blocks.COBBLESTONE, Blocks.PLANKS,
-	Blocks.LOG, Blocks.LEAVES, Blocks.SAND, Blocks.SNOW,
+	Blocks.MOSS, Blocks.SOIL, Blocks.SLATE, Blocks.TILES, Blocks.PLANKS,
+	Blocks.TRUNK, Blocks.FOLIAGE, Blocks.SAND, Blocks.SNOW,
 ]
 
 var world: VoxelWorld

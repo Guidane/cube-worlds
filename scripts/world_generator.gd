@@ -21,14 +21,14 @@ var world_seed: int
 var base := 22.0          # average surface depth from the centre
 var amp := 4.0            # terrain height variation (+/-)
 var sea := 0.0            # fluid fills air below this depth (0 = no fluid)
-var top_block := Blocks.GRASS
-var filler_block := Blocks.DIRT
-var deep_block := Blocks.STONE
+var top_block := Blocks.MOSS
+var filler_block := Blocks.SOIL
+var deep_block := Blocks.SLATE
 var shore_block := Blocks.SAND
 var fluid_block := Blocks.WATER
 var caves := false
 var tree_attempts := 0
-var tree_ground := Blocks.GRASS
+var tree_ground := Blocks.MOSS
 var ore_chance := 0.012
 
 var _height := FastNoiseLite.new()
@@ -64,7 +64,7 @@ func _init(p_biome: String, p_seed: int) -> void:
 			amp = 3.0
 		"snow":
 			top_block = Blocks.SNOW
-			filler_block = Blocks.DIRT
+			filler_block = Blocks.SOIL
 			shore_block = Blocks.SNOW
 			fluid_block = Blocks.ICE
 			sea = 20.0
@@ -74,7 +74,7 @@ func _init(p_biome: String, p_seed: int) -> void:
 		"lava":
 			top_block = Blocks.BASALT
 			filler_block = Blocks.BASALT
-			deep_block = Blocks.STONE
+			deep_block = Blocks.SLATE
 			shore_block = Blocks.BASALT
 			fluid_block = Blocks.LAVA
 			base = 21.0
@@ -105,8 +105,8 @@ func generate() -> PackedByteArray:
 				var id: int
 				if d < min_s - 4.0:
 					id = deep_block
-					if deep_block == Blocks.STONE and _rng.randf() < ore_chance:
-						id = Blocks.COAL_ORE
+					if deep_block == Blocks.SLATE and _rng.randf() < ore_chance:
+						id = Blocks.CRYSTAL
 				else:
 					var level := _surface_level(o, d)
 					if d >= level:
@@ -168,28 +168,31 @@ func _try_tree(data: PackedByteArray) -> void:
 
 
 func _plant_tree(data: PackedByteArray, ground: Vector3i, up: Vector3i) -> void:
-	var h := _rng.randi_range(4, 5)
+	var h := _rng.randi_range(3, 5)
 	# Need clear air above.
 	for k in range(1, h + 3):
 		var q := ground + up * k
 		if not in_bounds(q) or data[idx(q)] != Blocks.AIR:
 			return
-	data[idx(ground)] = Blocks.DIRT
+	data[idx(ground)] = Blocks.SOIL
 	var a := 0 if up.x != 0 else (1 if up.y != 0 else 2)
 	var e1 := Vector3i()
 	var e2 := Vector3i()
 	e1[(a + 1) % 3] = 1
 	e2[(a + 2) % 3] = 1
 	for k in range(1, h + 1):
-		data[idx(ground + up * k)] = Blocks.LOG
-	for k in range(h - 2, h + 2):
-		var r := 2 if k < h else 1
-		for i in range(-r, r + 1):
-			for j in range(-r, r + 1):
-				if r == 2 and absi(i) == 2 and absi(j) == 2 and _rng.randf() < 0.7:
+		data[idx(ground + up * k)] = Blocks.TRUNK
+	# Round, slightly squashed canopy centred on the top of the trunk.
+	var r := _rng.randf_range(2.0, 2.7)
+	var ri := int(ceil(r))
+	var centre := ground + up * h
+	var leaf: int = Blocks.FOLIAGE_KINDS[_rng.randi_range(0, Blocks.FOLIAGE_KINDS.size() - 1)]
+	for k in range(-ri, ri + 1):
+		for i in range(-ri, ri + 1):
+			for j in range(-ri, ri + 1):
+				var dist := Vector3(i, k * 1.25, j).length()
+				if dist > r + _rng.randf_range(-0.3, 0.3):
 					continue
-				if k == h + 1 and absi(i) == 1 and absi(j) == 1:
-					continue
-				var q := ground + up * k + e1 * i + e2 * j
+				var q := centre + up * k + e1 * i + e2 * j
 				if in_bounds(q) and data[idx(q)] == Blocks.AIR:
-					data[idx(q)] = Blocks.LEAVES
+					data[idx(q)] = leaf

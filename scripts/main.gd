@@ -20,9 +20,9 @@ const SKY_SHADER := """
 shader_type sky;
 
 uniform vec3 up_dir = vec3(0.0, 1.0, 0.0);
-uniform vec3 zenith_color : source_color = vec3(0.16, 0.36, 0.78);
-uniform vec3 horizon_color : source_color = vec3(0.62, 0.78, 0.95);
-uniform vec3 nadir_color : source_color = vec3(0.32, 0.45, 0.7);
+uniform vec3 zenith_color : source_color = vec3(0.24, 0.30, 0.62);
+uniform vec3 horizon_color : source_color = vec3(0.98, 0.78, 0.70);
+uniform vec3 nadir_color : source_color = vec3(0.50, 0.42, 0.66);
 
 void sky() {
 	float h = dot(EYEDIR, normalize(up_dir));
@@ -139,7 +139,7 @@ func _setup_environment() -> void:
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.62, 0.68, 0.8)
+	env.ambient_light_color = Color(0.72, 0.68, 0.85)
 	env.ambient_light_energy = 0.55
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
@@ -153,7 +153,7 @@ func _setup_environment() -> void:
 	var sun := DirectionalLight3D.new()
 	sun.name = "Sun"
 	sun.light_energy = 1.15
-	sun.light_color = Color(1.0, 0.96, 0.88)
+	sun.light_color = Color(1.0, 0.92, 0.84)
 	sun.shadow_enabled = true
 	sun.directional_shadow_max_distance = 120.0
 	add_child(sun)
